@@ -1,0 +1,164 @@
+index.html 
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioDiary Smart AI</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { --primary: #27ae60; --dark: #2c3e50; --bg: #f0f2f5; --ai-color: #8e44ad; }
+        body { font-family: -apple-system, sans-serif; background-color: var(--bg); margin: 0; padding: 10px; }
+        .app-container { max-width: 500px; margin: auto; background: white; border-radius: 20px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        
+        .section { background: #f8f9fa; padding: 15px; border-radius: 15px; margin-bottom: 15px; border: 1px solid #eee; }
+        h3 { margin-top: 0; color: var(--dark); display: flex; align-items: center; gap: 8px; }
+        
+        input, select { width: 100%; padding: 12px; margin: 5px 0; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; }
+        .btn { background: var(--primary); color: white; border: none; width: 100%; padding: 15px; border-radius: 10px; font-weight: bold; cursor: pointer; }
+        
+        /* AI Box */
+        .ai-box { background: #f3e5f5; border-left: 5px solid var(--ai-color); padding: 15px; border-radius: 10px; color: #4a148c; font-style: italic; font-size: 0.9em; }
+        
+        .bmi-badge { display: inline-block; padding: 5px 10px; border-radius: 5px; color: white; font-weight: bold; margin-top: 5px; }
+        .chart-area { height: 250px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div style="text-align: center; margin-bottom: 20px;">
+        <h2 style="margin:0; color: var(--ai-color);">🧠 BioDiary Smart AI</h2>
+        <input type="date" id="dateSelector" onchange="renderizza()" style="border:none; color:var(--primary); font-weight:bold; text-align:center; width: auto;">
+    </div>
+
+    <div class="section">
+        <h3>⚖️ Parametri Fisici</h3>
+        <div style="display: flex; gap: 10px;">
+            <input type="number" id="weight" placeholder="Peso (kg)" oninput="calcolaBMI()">
+            <input type="number" id="height" placeholder="Altezza (cm)" oninput="calcolaBMI()">
+        </div>
+        <div id="bmiResult">Inserisci i dati per il calcolo del BMI</div>
+    </div>
+
+    <div class="section">
+        <h3>🤖 AI Nutritional Advisor</h3>
+        <div id="aiAdvice" class="ai-box">Inserisci almeno un pasto per ricevere consigli...</div>
+    </div>
+
+    <div class="section">
+        <select id="categoryInput">
+            <option value="Colazione">Colazione ☕</option>
+            <option value="Pranzo">Pranzo 🍝</option>
+            <option value="Cena">Cena 🥗</option>
+            <option value="Snack">Snack 🍎</option>
+        </select>
+        <input type="text" id="foodInput" placeholder="Cosa hai mangiato?">
+        <input type="number" id="calInput" placeholder="Calorie kcal">
+        <button class="btn" onclick="aggiungiPasto()">Aggiungi Pasto</button>
+    </div>
+
+    <div class="chart-area"><canvas id="myChart"></canvas></div>
+    <div id="foodList"></div>
+    <h3 style="text-align:right">Oggi: <span id="totalCal">0</span> kcal</h3>
+</div>
+
+<script>
+    let diario = JSON.parse(localStorage.getItem('diarioSmart')) || [];
+    let myChart = null;
+    document.getElementById('dateSelector').valueAsDate = new Date();
+
+    function calcolaBMI() {
+        const p = parseFloat(document.getElementById('weight').value);
+        const a = parseFloat(document.getElementById('height').value) / 100;
+        const res = document.getElementById('bmiResult');
+
+        if (p > 0 && a > 0) {
+            const bmi = (p / (a * a)).toFixed(1);
+            let cat = ""; let col = "";
+            if(bmi < 18.5) { cat = "Sottopeso"; col = "#3498db"; }
+            else if(bmi < 25) { cat = "Normopeso"; col = "#27ae60"; }
+            else { cat = "Sovrappeso"; col = "#e67e22"; }
+            res.innerHTML = `Il tuo BMI è <b>${bmi}</b> <span class="bmi-badge" style="background:${col}">${cat}</span>`;
+            localStorage.setItem('userWeight', p); localStorage.setItem('userHeight', a*100);
+        }
+    }
+
+    function generaConsiglioAI(pastiOggi, totale) {
+        const adviceBox = document.getElementById('aiAdvice');
+        if (pastiOggi.length === 0) return;
+
+        let consiglio = "Analisi: ";
+        const snacks = pastiOggi.filter(p => p.cat === 'Snack').length;
+
+        if (totale > 2200) {
+            consiglio += "⚠️ Hai superato la soglia consigliata. Prova a ridurre le porzioni a cena.";
+        } else if (snacks > 3) {
+            consiglio += "🍎 Troppi snack rilevati. Cerca di concentrare i nutrienti nei pasti principali.";
+        } else if (totale < 1200) {
+            consiglio += "📉 Calorie molto basse. Assicurati di assumere abbastanza proteine e grassi sani.";
+        } else {
+            consiglio += "✅ Ottimo bilanciamento! Continua così e ricordati di bere almeno 2L di acqua.";
+        }
+        adviceBox.innerText = consiglio;
+    }
+
+    function renderizza() {
+        const date = document.getElementById('dateSelector').value;
+        const list = document.getElementById('foodList');
+        list.innerHTML = '';
+        let totale = 0;
+        const stats = { "Colazione": 0, "Pranzo": 0, "Cena": 0, "Snack": 0 };
+
+        const oggi = diario.filter(p => p.data === date);
+        oggi.forEach(p => {
+            totale += p.cal;
+            stats[p.cat] += p.cal;
+            const item = document.createElement('div');
+            item.style = "display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid #eee";
+            item.innerHTML = `<span>${p.nome}</span> <b>${p.cal} kcal</b>`;
+            list.appendChild(item);
+        });
+
+        document.getElementById('totalCal').innerText = totale;
+        aggiornaGrafico(stats);
+        generaConsiglioAI(oggi, totale);
+        localStorage.setItem('diarioSmart', JSON.stringify(diario));
+    }
+
+    function aggiornaGrafico(dati) {
+        const ctx = document.getElementById('myChart').getContext('2d');
+        if (myChart) myChart.destroy();
+        myChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(dati),
+                datasets: [{ data: Object.values(dati), backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0'] }]
+            },
+            options: { maintainAspectRatio: false }
+        });
+    }
+
+    function aggiungiPasto() {
+        const n = document.getElementById('foodInput').value;
+        const c = parseInt(document.getElementById('calInput').value);
+        if (n && c) {
+            diario.push({ id: Date.now(), nome: n, cal: c, cat: document.getElementById('categoryInput').value, data: document.getElementById('dateSelector').value });
+            document.getElementById('foodInput').value = ''; document.getElementById('calInput').value = '';
+            renderizza();
+        }
+    }
+
+    // Carica dati salvati dell'utente
+    window.onload = () => {
+        if(localStorage.getItem('userWeight')) {
+            document.getElementById('weight').value = localStorage.getItem('userWeight');
+            document.getElementById('height').value = localStorage.getItem('userHeight');
+            calcolaBMI();
+        }
+        renderizza();
+    };
+</script>
+
+</body>
+</html>
